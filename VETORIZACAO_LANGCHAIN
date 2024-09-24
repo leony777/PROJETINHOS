@@ -1,0 +1,67 @@
+import langchain.chains.combine_documents
+from langchain_openai import OpenAIEmbeddings, ChatOpenAI
+from langchain.chains import LLMChain
+from langchain_community.vectorstores import FAISS
+from langchain.chains.retrieval import create_retrieval_chain
+
+from langchain.prompts import PromptTemplate
+from langchain_core.prompts import ChatPromptTemplate
+
+from langchain_community.document_loaders.pdf import PyPDFLoader
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain.chains.combine_documents import create_stuff_documents_chain
+
+import dotenv
+
+dotenv.load_dotenv()
+
+llm = ChatOpenAI(model='gpt-4o-mini')
+
+
+def doc_to_vector(caminho):
+
+    loader = PyPDFLoader(caminho)
+    docs = loader.load()
+
+    empeddings = OpenAIEmbeddings()
+
+    text_splitter = RecursiveCharacterTextSplitter()
+    documentos = text_splitter.split_documents(docs)
+    vetor = FAISS.from_documents(documentos, empeddings)
+    output = vetor.as_retriever()
+
+    return output
+
+# prompt = ChatPromptTemplate.from_template(
+#     """Responda com base no contexto: {context}
+#     Pergunta: {input}
+#     """)
+
+prompt = ChatPromptTemplate.from_messages(
+    [
+        ('system',  # '###Responda as perguntas sobre o tema de filosofia com abordagem da felicidade.###'
+         '###Use o contexto presente no documento ###{context}### e responda a pergunta do usuário.###'
+         '###responda assertivamente a resposta certa escolhendo entre as opções apresentadas pelo usuário.###'
+         '###Busque conhecimento para sinalizar a repostas primeiramente usando o documento carregado,'
+         ' se não conseguir responder de forma concreta use outras fontes externas para responder.###'
+         ),
+        ('human', '{input}')
+    ]
+)
+
+
+document_chain = create_stuff_documents_chain(llm=llm, prompt=prompt)
+
+retriver = doc_to_vector(caminho=r"C:\Users\MEU_USUARIO\Videos\TRANSCRICAO_PALESTRA.pdf")
+
+retriver_chain = create_retrieval_chain(retriver, document_chain)
+
+resposta = retriver_chain.invoke({"input": "Do que se trata o documento?"})
+print(resposta['answer'])
+input('input')
+resposta = retriver_chain.invoke({"input": "qual foi a minha ultima pergunta?"})
+print(f'segunda resposta: {resposta['answer']}')
+
+
+
+

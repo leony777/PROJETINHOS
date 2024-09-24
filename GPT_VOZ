@@ -1,0 +1,287 @@
+import time
+
+from langchain.memory import ConversationBufferMemory
+from langchain_openai import ChatOpenAI
+from langchain.chains.conversation.base import ConversationChain
+from langchain.prompts import ChatPromptTemplate
+from langchain.memory import ConversationBufferWindowMemory
+from langchain.memory import ConversationTokenBufferMemory
+from langchain.memory import ConversationSummaryBufferMemory
+import pyttsx3
+import speech_recognition as sr
+import os
+import keyboard
+from google.cloud import speech
+from google.cloud import texttospeech
+import pygame
+from langchain_community.document_loaders.pdf import PyPDFLoader
+import datetime
+import dotenv
+import threading
+
+
+
+
+dotenv.load_dotenv()
+
+caminho = r"C:/Users/MEU_USUARIO/Videos/TRANSCRICAO_PALESTRA.pdf"
+loader = PyPDFLoader(caminho)
+documentos = loader.load()
+
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = r"C:\Users\MEU_USUARIO\Downloads\ARQUIVO.json"
+
+contagem = 0
+chat = ChatOpenAI(model='gpt-4o-mini')
+memoria = ConversationBufferMemory()#
+#memoria = ConversationBufferWindowMemory(k=3)
+#memoria = ConversationTokenBufferMemory(llm=chat, max_token_li=300)
+#memoria = ConversationSummaryBufferMemory(llm=chat, max_token_li=300)
+
+
+Conversa = ConversationChain(llm=chat)#, memory=memoria)
+
+Chat_template = ChatPromptTemplate.from_messages(
+    # [
+    #     ('system',
+    #      'Conversar de forma informal'  ##, responda usando girias que jovens da geração Alfa usam.'
+    #      ' Não se ofereça para ajudar ou continuar ajudando ao final das respostas. '
+    #      'Resuma as suas respostas ao máximo.'),
+    #     ('ai', 'Qual é a dúvida?.'),
+    #     ('human', '{pergunta_usuario}')
+    # ]
+
+
+[
+        ('system',
+#'Responda rigorosamente apenas o que estiver descrito no documento a seguir: {doc}.'
+'### Responda as perguntas de forma resumida, em poucas palavras.'
+'### Você pode responder a perguntas variadas, sem necessáriamente ativar alguma função a seguir.'
+         #'### ao final da sua resposta vc deve declarar a tag ##nao_ler## apenas se sua resposta tiver mais de 2 linhas '
+#'de código de qualquer natureza, textos normais não são considerados nessa regra. Caso contrário traga a tag '
+#'##ler## ao final da resposta.'
+'## O usuário também poderá solicitar funções especificas a você.'
+'## você deve aplicar uma função apenas se o usuário solicitar explicitamente.'
+'## Inicia a função apenas se o usuário fizer mensão a traduzir algo.'
+'## Funçõe ["###responder_multidioma###"].'
+'## Para ativar essa função o usuário deverá expressar o desejo de traduzir uma frase, e só então você deverá seguir'
+'as orientações presentes dentro da função:'
+'[A função "###responder_multidioma###" você deve analisar a frase do usuário e coletar as palavras que ele quer'
+' que você traduza a mesma frase para o inglês e espanhol, separando os idiomas por |, usando tom informal, adaptando palavras para termos gammer.'
+' e ao final da sua resposta coloque função ###responder_multidioma###.'
+'Exemplo de pergunta do usuário: "Preciso responder algo em inglês e espanhol. responda pra mim: "Tudo bem, vamos lá.".'
+'Sua resposta deve ser: "Okey, Lets go.| está bien, vámonos." ###responder_multidioma###]'
+'responda apenas com a frase traduzida e a tag da função, e não acrescente mais nada na resposta.'),
+        ('human', '{pergunta_usuario}')
+    ]
+# [
+#         ('system',
+#          'Se comporte de forma metódico e sistemática. Responda apenas informações que contém nesse documento ###{doc}###.'
+#          'Se não achar a pergunta no documento oriente o usuário a procurar a administração do condomínio.'
+#          'Sempre resuma as respostas. Se a resposta for complexa ou envolver calculos ou muitos números oriente a acessar diretamente o documento.'
+#          'Se a resposta for contestada, peça desculpas, e peça para o humano entrar contato com a administração para ter a confirmação.'),
+#         ('ai', 'Olá, tudo bem? Estou aqui para te ajuar.'),
+#         ('human', 'Preciso de uma resposta resumida. {pergunta_usuario}')
+#     ]
+)
+
+def synthesize_text(text):
+    # Carregar credenciais do arquivo JSON baixado
+
+    # Inicializar o cliente Text-to-Speech
+    client = texttospeech.TextToSpeechClient()
+
+    # Configurar a entrada de texto
+    synthesis_input = texttospeech.SynthesisInput(text=text)
+
+    # Selecionar a voz desejada (opcional)
+    voice = texttospeech.VoiceSelectionParams(
+        language_code="pt-BR",  # Idioma (exemplo: português brasileiro)
+        name="pt-BR-Wavenet-C"  # Nome da voz (consulte a documentação para opções)
+    )
+
+    # Configurar o áudio de saída
+    audio_config = texttospeech.AudioConfig(
+        audio_encoding=texttospeech.AudioEncoding.MP3  # Formato de áudio desejado
+    )
+
+    # Chamar a API para sintetizar o texto em fala
+    response = client.synthesize_speech(
+        input=synthesis_input, voice=voice, audio_config=audio_config
+    )
+
+    hora_sistema = datetime.datetime.now().strftime("%H_%M_%S")
+    output_file = fr"C:\Users\MEU_USUARIO\PycharmProjects\LangChain\Audios\output_{hora_sistema}.mp3"
+
+    # Salvar o áudio em um arquivo
+    with open(output_file, "wb") as out:
+        out.write(response.audio_content)
+
+    # Inicializar o mixer do pygame
+    pygame.mixer.init()
+
+    # Carregar o arquivo de áudio
+    pygame.mixer.music.load(output_file)
+
+    # Reproduzir o áudio
+    pygame.mixer.music.play()
+
+    # Manter o script em execução até o áudio terminar
+    while pygame.mixer.music.get_busy():
+        pygame.time.Clock().tick(5)
+
+def ler_texto_em_voz_alta(texto):
+    engine = pyttsx3.init()
+    voices = engine.getProperty('voices')
+    engine.setProperty('voice', voices[0].id)  # Use a voz padrão do sistema (pode ser alterada)
+    engine.setProperty('rate', 200)  # Configurar a velocidade da fala (150 palavras por minuto)
+
+    engine.say(texto)
+    engine.runAndWait()
+
+def transcrever_audio():
+    print('iniciando transcrever_audio')
+    # recognizer = sr.Recognizer()
+
+    recognizer = sr.Recognizer()
+    texto = ""
+    while texto == "":
+        # with sr.Microphone() as source:
+        #     print('Iniciando com sr.Microphone() as source:')
+        #     print("... ouvindo ...")
+        #
+        #     # Ajusta para o ruído ambiente
+        #     recognizer.adjust_for_ambient_noise(source, duration=1)
+        #
+        #     try:
+        #         # Espera por fala com timeout e limitando o tempo da frase
+        #         audio = recognizer.listen(source, timeout=2, phrase_time_limit=20)
+        #         print('Áudio capturado com sucesso!')
+        #
+        #         # Usar o reconhecedor do Google para transcrever o áudio
+        #         texto = recognizer.recognize_google(audio, language="pt-BR")
+        #         print("Você disse: " + texto)
+        #
+        #         # Retornar o texto reconhecido
+        #         return texto
+        #
+        #     except sr.WaitTimeoutError:
+        #         print("Nenhum áudio detectado no tempo limite. Tentando novamente...")
+        #     except sr.UnknownValueError:
+        #         print("Não consegui entender o áudio. Tentando novamente...")
+        #     except sr.RequestError as e:
+        #         print(f"Ocorreu um erro com o serviço de reconhecimento de fala: {e}")
+        #     except Exception as e:
+        #         print(f"Ocorreu um erro inesperado: {e}")
+
+        with sr.Microphone() as source:
+            print('iniciando with sr.Microphone() as source:')
+            print("... ouvindo ...")
+            recognizer.adjust_for_ambient_noise(source, duration=1)
+            audio = recognizer.listen(source)#, phrase_time_limit=20)
+            print('iniciando audio = recognizer.listen(source)')
+            try:
+                # Usar o reconhecedor do Google para transcrever o áudio
+                texto = recognizer.recognize_google(audio, language="pt-BR")
+                print('texto = recognizer.recognize_google(audio, language="pt-BR")')
+                print("Você disse: " + texto)
+            except sr.RequestError as e:
+                print("Não foi possível solicitar resultados; {0}".format(e))
+                break
+            except sr.UnknownValueError:
+                print("O reconhecimento de fala não conseguiu entender o áudio")
+
+                break
+            return texto
+
+
+
+
+
+texto = ''
+# while texto == '':
+#     texto = transcrever_audio()
+#
+# template_com_pergunta = Chat_template.format_messages(pergunta_usuario=texto, doc=documentos)
+# resposta_1 = Conversa.predict(input=template_com_pergunta)
+# synthesize_text(resposta_1)
+# print('Assistente: ', resposta_1)
+# print('#########################################################################################')
+
+# while True:
+#
+#     pergunta = ''
+#     while pergunta == '':
+#        pergunta = transcrever_audio()
+#
+#     resposta = Conversa.predict(input=Chat_template.format_messages(pergunta_usuario=pergunta,doc=documentos))
+#     print('Assistente: ', resposta)
+#     print('#########################################################################################')
+#     synthesize_text(resposta)
+
+
+
+while True:
+    # Loop até detectar o comando de início
+    print('entrando loop 1')
+    comando = ''
+    while comando == '':
+        print("Aguardando comando de início...")
+        comando = transcrever_audio()  # Função para capturar o comando de voz
+        try:
+            if comando is not None and 'leona' in comando.lower():  # Verifica se o comando é 'iniciar'
+                synthesize_text("Iniciando Chat voz.")
+                print("Comando reconhecido.")
+            else:
+                print("Comando não reconhecido. Diga 'oi leona' para começar.")
+                comando = ''  # Continua no loop caso o comando seja diferente de 'iniciar'
+        except:
+            comando = ''
+
+    # Após o comando 'iniciar', prossegue para a pergunta
+    pergunta = ""
+    while True:
+
+        while pergunta == "" or pergunta is None:  # Loop até capturar a pergunta
+            print('entrando loop 3')
+            pergunta = transcrever_audio()  # Função que transcreve o áudio da pergunta
+
+            if pergunta is not None:
+                if "standy" in str.lower(pergunta):
+                    synthesize_text("ok.")
+                    break
+
+        # Chama o modelo para gerar a resposta
+        if pergunta is not None:
+            if 'standy' in str.lower(pergunta):
+                pergunta = ""
+                break
+
+        resposta = Conversa.predict(input=Chat_template.format_messages(pergunta_usuario=pergunta))#, doc=documentos))
+        print('Assistente: ', resposta)
+        print('#########################################################################################')
+
+        # Síntese da resposta por voz
+        if resposta != "" and '###' not in resposta:
+            #resposta = resposta.replace('##ler##','')
+            synthesize_text(resposta)
+
+        ### '{"Digitar no chat": "##digitar_chat##", "Responder_em_inglês_espanhol":"##responder_multidioma##"'),
+        ## INICIALIZANDO COMANDOS ESPECÍFICOS
+        if "###digitar_chat###" in resposta:
+            keyboard.press_and_release('Enter')
+            time.sleep(0.2)
+            resposta = resposta.replace("###digitar_chat###",'')
+            keyboard.write(resposta, 0.01, True,)
+
+        if "###responder_multidioma###" in resposta:
+            synthesize_text('inserindo.')
+            keyboard.press_and_release('Enter')
+            time.sleep(0.2)
+            resposta = resposta.replace("###responder_multidioma###",'')
+            keyboard.write(resposta, 0.01, True,)
+            time.sleep(0.1)
+            keyboard.press_and_release('Enter')
+
+        pergunta = ""
+
+    # Após a resposta, o loop reinicia para aguardar o próximo comando
